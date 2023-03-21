@@ -1,0 +1,8 @@
+apply from: '..\\externalGradle\\fedrisgwt.gradle'
+
+dependencies {
+    compile project(':domain')
+    compile project(':service')
+}
+
+defaultTasks 'build'

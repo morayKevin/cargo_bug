@@ -1,0 +1,350 @@
+apply plugin: 'war'
+
+apply from: '..\\externalGradle\\fedrisjava.gradle'
+
+// must be mandatory into each project
+ext.projectPathLib = "${rootProject.projectDir}\\explodeddeps\\"
+
+ext.gwtBuildDir = "$projectDir/war"
+ext.gwtStyle = 'OBF'
+
+ext.webAppDirName = 'war'
+
+jar.enabled = true
+
+task gwtCompile(type: GwtCompile, dependsOn: compileJava) {
+  logging.setLevel(LogLevel.INFO)
+  sources = sourceSets.main.java
+  ext.target = new File('war')
+  ext.workers = project.hasProperty('localWorkers') ? project.getProperty('localWorkers') : 2
+}
+
+gradle.getTaskGraph().whenReady { graph ->
+  if(!graph.getAllTasks().isEmpty()) {
+    graph.getAllTasks().last().doLast {
+      Date now = new Date()
+      println "\n ***** All completed @ $now  ***"
+    }
+  }
+}
+
+/**
+ * War Task before deployment
+ */
+war {
+  def appName = (!project.hasProperty('applicationName') || applicationName == null || applicationName.isEmpty()) ? project.rootProject.name : applicationName
+  def modName = (!project.hasProperty('moduleName') || moduleName == null || moduleName.isEmpty()) ? appName : moduleName
+  println("initialize war Task with Name :[" + appName + "]")
+  archiveName(appName + '.war')
+  webXml = file('war/WEB-INF/web.xml')
+  from('war/WEB-INF') {
+    include 'applicationContext.xml'
+    into 'WEB-INF'
+  }
+  from('war') {
+    include 'images/**'
+    into ''
+  }
+  from('war') {
+    include 'index.jsp'
+    into ''
+  }
+  from('war') {
+    include 'js/**'
+    into ''
+  }
+  from('war') {
+    include 'news/**'
+    into ''
+  }
+  from('war') {
+    include 'style/**'
+    into ''
+  }
+
+  if(project.hasProperty('includeWarDir')){
+    includeWarDir.split(';').each {
+      println("adding ${it} in WAR")
+      def includeDir = "${it}/**"
+      println("includeDir : " + includeDir)
+      from('war') {
+        include includeDir
+        into ''
+      }
+    }
+  } else {
+    println("nothing to add")
+  }
+
+  from('war') {
+    include modName + '/**'
+    into ''
+  }
+
+  if (project.hasProperty("domain") && domain != null && domain.equals("fedris")) {
+    println("making Fedris War init ...")
+
+    rootSpec.exclude("**/wax-*.jar")
+    rootSpec.exclude("**/mysql-connector-*.jar")
+    rootSpec.exclude("**/postgresql-*.jar")
+    rootSpec.exclude("**/db2jcc4-*.jar")
+    rootSpec.exclude("**/db2jcc_license_cisuz-4.7.85.jar")
+    rootSpec.exclude("**/javax.mail-api-*.jar")
+    rootSpec.exclude("**/protobuf-java-*.jar")
+    rootSpec.exclude("**/checker-qual-*.jar")
+    rootSpec.exclude("**/slf4j-*-*.jar")
+    rootSpec.exclude("**/log4j-*-*-*.jar")
+    rootSpec.exclude("**/jcl-*.jar")
+    rootSpec.exclude("**/commons-io-*.jar")
+    rootSpec.exclude("**/sqlbuilder-*.jar")
+
+    //import for fedrisCore:Common
+    rootSpec.exclude("**/javax.servlet-api-*.jar") //fedrisgwt.gradle
+    rootSpec.exclude("**/wsdl4j-*.jar")
+
+    //import for fedrisCore:Web
+    rootSpec.exclude("**/gwt-dev-2.7.0.jar")
+    rootSpec.exclude("**/gwt-user-2.7.0.jar")
+    rootSpec.exclude("**/validation-*.jar") //sub dependencies of gwt-user-2.7.0.jar
+    rootSpec.exclude("**/jetty-*.jar")
+    rootSpec.exclude("**/javax.mail.glassfish-*.jar") //sub dependencies of jetty
+    rootSpec.exclude("**/javax.activation-*.jar") //sub dependencies of jetty
+    rootSpec.exclude("**/javax.servlet-*.jar") //sub dependencies of jetty
+    rootSpec.exclude("**/javax.transaction-*.jar") //sub dependencies of jetty
+    rootSpec.exclude("**/asm-*.jar") //sub dependencies of gwt-dev-2.7.0.jar
+    rootSpec.exclude("**/commons-fileupload-*.jar")
+
+    //import of fedrisCore
+    rootSpec.exclude("**/monitoring-*.jar")
+    rootSpec.exclude("**/utils-*.jar")
+    rootSpec.exclude("**/security-*.jar")
+
+    //import for springframework
+    rootSpec.exclude("**/aopalliance-*.jar")
+    rootSpec.exclude("**/commons-logging-*.jar")
+    rootSpec.exclude("**/spring-*.jar")
+
+    //import for fedrisCore:security
+    rootSpec.exclude("**/commons-codec-*.jar")
+    rootSpec.exclude("**/spnego-*.jar")
+    rootSpec.exclude("**/json-*.jar")
+    rootSpec.exclude("**/jackson-*.jar")
+
+    //import for fedrisCore:Core
+    rootSpec.exclude("**/commons-lang3-*.jar")
+    rootSpec.exclude("**/guava-*.jar")
+    rootSpec.exclude("**/jsr305-*.jar") //sub dependencies of guava-gwt
+  } else if (project.hasProperty("domain") && domain != null && domain.equals("old_fedris")) {
+    rootSpec.exclude("**/gwt-dev-2.7.0.jar")
+  } else if (project.hasProperty("domain") && domain != null && domain.equals("daf")) {
+    println("making DAF War init ...")
+    rootSpec.exclude("**/postgresql-*.jar")
+
+    //import for fedrisCore:Web
+    rootSpec.exclude("**/gwt-dev-2.7.0.jar")
+    rootSpec.exclude("**/asm-*.jar") //sub dependencies of gwt-dev-2.7.0.jar
+    rootSpec.exclude("**/gwt-user-2.7.0.jar")
+    rootSpec.exclude("**/validation-*.jar") //sub dependencies of gwt-user-2.7.0.jar
+  } else if (project.hasProperty("domain") && domain != null && domain.equals("mp")) {
+    println("making MP War init ...")
+    //import in fedrisJava.gradle
+    rootSpec.exclude("**/commons-io-*.jar")
+    rootSpec.exclude("**/slf4j-*-*.jar")
+    rootSpec.exclude("**/log4j-*-*-*.jar")
+    rootSpec.exclude("**/jcl-*.jar")
+    rootSpec.exclude("**/mysql-connector-*.jar")
+    rootSpec.exclude("**/db2jcc4-*.jar")
+    rootSpec.exclude("**/db2jcc_license_cisuz-4.7.85.jar")
+    rootSpec.exclude("**/postgresql-*.jar")
+    rootSpec.exclude("**/sqlbuilder-*.jar")
+    rootSpec.exclude("**/mail-*.jar")
+    rootSpec.exclude("**/activation-*.jar") //sub dependencies of mail:1.5.0-b01.jar
+    rootSpec.exclude("**/wax-*.jar")
+    rootSpec.exclude("**/jaxb-api-*.jar")
+    rootSpec.exclude("**/jaxws-api-*.jar")
+
+    //import for fedrisCore:Common
+    rootSpec.exclude("**/javax.servlet-api-*.jar") //fedrisgwt.gradle
+    rootSpec.exclude("**/wsdl4j-*.jar")
+
+    //import for fedrisCore:Core
+    rootSpec.exclude("**/commons-lang-*.jar")
+    rootSpec.exclude("**/guava-*.jar")
+    rootSpec.exclude("**/jsr305-*.jar") //sub dependencies of guava-gwt
+
+    //import for fedrisCore:Web
+    rootSpec.exclude("**/gwt-dev-2.7.0.jar")
+    rootSpec.exclude("**/asm-*.jar") //sub dependencies of gwt-dev-2.7.0.jar
+    rootSpec.exclude("**/gwt-user-2.7.0.jar")
+    rootSpec.exclude("**/validation-*.jar") //sub dependencies of gwt-user-2.7.0.jar
+    rootSpec.exclude("**/jetty-*.jar")
+    rootSpec.exclude("**/servlet-api-*.jar")
+    rootSpec.exclude("**/odile-remote-client-*.jar")
+    rootSpec.exclude("**/commons-fileupload-*.jar")
+
+    //import for BCSS communication
+    rootSpec.exclude("**/cxf-*.jar")
+    rootSpec.exclude("**/FastInfoset-*.jar")
+    rootSpec.exclude("**/wsdl4j-*.jar")
+    rootSpec.exclude("**/neethi-*.jar")
+    rootSpec.exclude("**/XmlSchema-*.jar")
+
+    //import for fedrisCore:Sfilter
+    rootSpec.exclude("**/commons-codec-*.jar")
+    rootSpec.exclude("**/spnego-*.jar")
+    rootSpec.exclude("**/json-*.jar")
+    rootSpec.exclude("**/jackson-*.jar")
+
+    //import of fedrisCore
+    rootSpec.exclude("**/meta-*.jar")
+    rootSpec.exclude("**/monitoring-*.jar")
+//    rootSpec.exclude("**/sentities-*.jar")
+//    rootSpec.exclude("**/sfilter-*.jar")
+    rootSpec.exclude("**/utils-*.jar")
+
+    //import for springframework
+    rootSpec.exclude("**/aopalliance-*.jar")
+    rootSpec.exclude("**/commons-logging-*.jar")
+    rootSpec.exclude("**/spring-*.jar")
+
+    //import brol
+    rootSpec.exclude("**/joda-time-*.jar")
+    rootSpec.exclude("**/checker-qual-*.jar")
+
+    //present in share libs
+    rootSpec.exclude("**/commons-collections-*.jar") //sub dependencies of commons-beanutils
+
+    //don't required in WAR
+    rootSpec.exclude("**/cglib-nodep-*.jar")
+
+    rootSpec.exclude("**/tika-app-*.jar")
+  } else if (project.hasProperty("domain") && domain != null && domain.equals("mp_old")) {
+    println("making old MP War init ...")
+
+    //import for fedrisCore:Web
+    rootSpec.exclude("**/gwt-dev-2.7.0.jar")
+  } else if (project.hasProperty("domain") && domain != null && domain.equals("carrousel")) {
+    println("making Carrousel War init ...")
+
+    //import for fedrisCore:Web
+    rootSpec.exclude("**/gwt-dev-2.7.0.jar")
+  }
+}
+
+dependencies {
+  if (project.hasProperty("domain") && domain != null && domain.equals("fedris")) {
+    compile group: 'be.fedris.fedrisCore', name: 'security', version: "$fedrisCoreVersion"
+  } else {
+    compile "be.fedris.fedris-core:sfilter:$fedrisCoreVersion"
+  }
+  compile "javax.servlet:javax.servlet-api:$servletVersion"
+}
+
+buildscript {
+  repositories {
+    maven {
+      url = "https://repo1.maven.org/maven2/"
+    }
+  }
+  dependencies {
+    classpath group: 'org.lesscss', name: 'lesscss', version: '1.7.0.1.1'
+    classpath group: 'org.mozilla', name: 'rhino', version: '1.7.12'
+  }
+}
+
+/**
+ * Less compile Task
+ */
+task lessCompile {
+  doLast {
+    println("start less compiling for " + project.rootProject.name)
+    try {
+      def compiler = new org.lesscss.LessCompiler()
+      def directory = new File(project(':web').projectDir, "war/style")
+      directory.eachFile {
+        if (it.name.endsWith('.less') && !it.name.endsWith('.include.less') && !it.name.equals("awesome-icons.less")) {
+          println("start compiling " + it.name)
+          compiler.compile((it), file(it.path.replace(".less", ".css")))
+        }
+      }
+    } catch (Exception e) {
+      logger.error('unable to compile less to css. Continuing...')
+      logger.error(e.toString())
+    }
+  }
+}
+
+class GwtCompile extends DefaultTask {
+  @Input
+  def sources
+
+  @OutputDirectory
+//  def target
+
+  @TaskAction
+  def compile() {
+    sources.getSrcDirs().each { srcDir ->
+      if (srcDir.isDirectory()) {
+        def modules = []
+        searchForModules('', srcDir, modules)
+        modules.each { module ->
+          println("compiling module $module in $srcDir using style $project.ext.gwtStyle")
+          println("*********************************************")
+          println("Project path lib $project.projectPathLib")
+          println("*********************************************")
+          def pathString = project.configurations.compile.collect {
+            "${project.projectPathLib}${it.getName()}"
+          }.join(';')
+          ant.java(classname: 'com.google.gwt.dev.Compiler', failOnError: 'true', fork: 'true') {
+            jvmarg(value: '-Xmx2048M')
+            arg(line: '-war ' + target)
+            arg(line: '-style ' + project.gwtStyle)
+            arg(line: '-logLevel ' + 'INFO')
+            arg(line: '-extra build/gwt/extra')
+            arg(line: '-compileReport')
+            arg(line: '-localWorkers ' + workers)
+            arg(value: module)
+            classpath {
+              project.rootProject.subprojects.sourceSets.main.java.each { java ->
+                java.getSrcDirs().each {
+                  pathElement(location: it)
+                }
+
+              }
+
+              pathElement(location: srcDir)
+              pathElement(path: pathString)
+              println("path Size : " + pathString.length())
+              pathElement(location: "${project.ext.gwtBuildDir}/WEB-INF/classes")
+            }
+
+          }
+        }
+      }
+    }
+  }
+
+  def searchForModules(String currentPath, File dir, List<String> modules) {
+    dir.eachFile { file ->
+      if (file.isDirectory() || file.name ==~ /^\w+\.gwt\.xml$/) {
+        if (!"".equals(currentPath) && !currentPath.endsWith(".")) currentPath += "."
+        if (file.isDirectory()) {
+          searchForModules(currentPath + file.getName(), file, modules)
+        } else {
+          if (file.getText().indexOf('entry-point') > 0) {
+            modules.add(currentPath + file.getName().replace(".gwt.xml", ""))
+          }
+        }
+      }
+    }
+  }
+}
+
+if (project.hasProperty('ideaModule')) {
+  idea.module.iml {
+    withXml { provider ->
+      def facetManager = provider.node.appendNode('component', ['name': 'FacetManager'])
+      def facet = facetManager.appendNode('facet', ['type': 'gwt', 'name': 'GWT'])
+    }
+  }
+}

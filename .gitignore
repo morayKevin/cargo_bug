@@ -1,0 +1,6 @@
+/web/war/cargo_bug
+/web/war/WEB_INF/deploy/
+/web/preferences.xml
+cargo_bug.ipr
+*.iml
+cargo_bug.iws

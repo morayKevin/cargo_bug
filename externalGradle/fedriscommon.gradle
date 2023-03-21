@@ -1,0 +1,207 @@
+def gradleMinimumVersion = "5.6"
+if ("$gradle.gradleVersion" < gradleMinimumVersion) {
+  throw new GradleException("Update gradle minimum version: $gradleMinimumVersion, running gradle version: $gradle.gradleVersion")
+}
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'maven-publish'
+apply plugin: 'war'
+
+compileJava.options.encoding = 'utf-8'
+javadoc.options.encoding = 'utf-8'
+project.ext.javaVersion = org.gradle.api.JavaVersion.VERSION_1_8
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+// variables for repositories (include, exclude , etc...)
+def repositoryExcludeMavenCentral = project.hasProperty("repository_exclude_maven_central") ? project.getProperty("repository_exclude_maven_central") : ""
+def repositoryExcludeItext = project.hasProperty("repository_exclude_itext") ? project.getProperty("repository_exclude_itext") : ""
+def repositoryExcludeSnapshot = project.hasProperty("repository_exclude_snapshot") ? project.getProperty("repository_exclude_snapshot") : ""
+if (project.hasProperty("repository_exclude_snapshot")) println("repository_exclude_snapshot : " + "$repositoryExcludeSnapshot")
+def repositoryIncludeExternal = project.hasProperty("repository_include_external") ? project.getProperty("repository_include_external") : "[\\S\\s]+"
+def hasSnapShot = project.hasProperty("SNAPSHOT")
+
+ideaModule.ext.downloadJavadoc = true
+
+repositories {
+  //external dependencies (in Nexus)
+
+  //maven-central dependencies
+  maven {
+    url = "https://repo1.maven.org/maven2/"
+    content {
+      // Exclude Group by Regex . Ex: "(be\.fedris.*)|(nu.studer.*)" or empty
+      excludeGroupByRegex "$repositoryExcludeMavenCentral"
+    }
+  }
+
+  //itext dependencies
+  maven {
+    url = "https://repo.itextsupport.com/releases"
+  }
+
+  // Ehealth dependencies (Smals)
+  maven {
+    url = "http://repo.ehealth.fgov.be/artifactory/maven2/"
+  }
+
+  // e-contract.be dependencies (fedict)
+  maven {
+    url = "https://e-contract.be/maven2/"
+  }
+
+}
+
+task sourceJar(type: Jar, dependsOn: classes) {
+  from project.sourceSets.main.allSource
+  if (project.hasProperty('publication_classifier')) {
+    classifier = publication_classifier + '-sources'
+  } else {
+    classifier = 'sources'
+  }
+}
+task packageJavadoc(type: Jar, dependsOn: javadoc) {
+  from project.javadoc.destinationDir
+  if (project.hasProperty('publication_classifier')) {
+    classifier = publication_classifier + '-javadoc'
+  } else {
+    classifier = 'javadoc'
+  }
+}
+
+jar {
+  if (project.hasProperty('publication_classifier')) {
+    classifier = publication_classifier
+  }
+}
+
+task publish(dependsOn: [], overwrite: true) {
+  //throw new GradleException("Publish task is disabled, instead use gradle publishWar or gradle publishJar")
+}
+
+def getLibraryVersion() {
+  def temp_version=(!project.hasProperty('artifactVersion') || artifactVersion == null || artifactVersion.isEmpty()) ? version : artifactVersion
+  if((project.hasProperty("is_snapshot")&&is_snapshot.equals("true"))){
+    if(!version.toLowerCase().endsWith("snapshot"))
+    {
+      version=version+"-SNAPSHOT"
+    }
+    else return version
+  }
+  else return version
+
+}
+
+configurations {
+  providedCompile
+  sourceCodes
+  javadocs
+}
+
+sourceSets {
+  main {
+    compileClasspath += configurations.providedCompile
+    java {
+      srcDir 'src/main/java'
+    }
+    resources {
+      srcDir 'src/main/java'
+    }
+  }
+  test {
+    compileClasspath += configurations.providedCompile
+  }
+}
+
+javadoc {
+  source = project.sourceSets.main.allJava
+  classpath = configurations.compileClasspath
+
+  options {
+    setMemberLevel JavadocMemberLevel.PUBLIC
+    setAuthor true
+  }
+  options.addStringOption("sourcepath", "")
+  options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+if (project.hasProperty('ideaProject')) {
+  idea.project {
+    languageLevel = '1.8'
+  }
+  idea.project.ipr {
+    javaVersion = '1.8'
+    withXml { provider ->
+      provider.node.component.find { it.@name == 'VcsDirectoryMappings' }.mapping.@vcs = 'Git'
+      def comp = provider.node.appendNode('component', ['name': 'GradleSettings'])
+      comp.appendNode('option', ['name': 'SDK_HOME', value: "d:/gradle/gradle-$gradle.gradleVersion"])
+    }
+  }
+}
+
+jar.doLast {
+  copy {
+    from jar.outputs.files
+    into project.rootProject.file('exploded')
+  }
+
+  copy {
+    from configurations.runtime
+    into project.rootProject.file('explodeddeps')
+  }
+}
+
+if (project.hasProperty('ideaWorkspace')) {
+  def module = file('web').exists() ? 'web' : project.name
+  def projectDir = 'file://$PROJECT_DIR$'
+  def workingDir = file('web').exists() ? 'file://$PROJECT_DIR$/web' : 'file://$PROJECT_DIR$'
+  def username = "username"
+  def jettyClass = (project.hasProperty("domain") && domain != null && domain.equals("fedris")) ? 'be.fedris.gwt.server.Jetty' : 'be.fmpfbz.gwt.server.Jetty'
+  def gwtClass = (project.hasProperty("domain") && domain != null && domain.equals("fedris")) ? 'be.fedris.gwt.server.GWT' : 'be.fmpfbz.gwt.server.GWT'
+  idea {
+    workspace.iws.withXml { provider ->
+      def runManager = provider.node.component.find { it.@name == 'RunManager' }
+      println("configuration of runManager")
+      runManager.@selected = 'Application.superDevMode'
+      [[name: 'Jetty', main: jettyClass],
+       [name: 'superDevMode', main: gwtClass]].each { entry ->
+        def runnerNode = runManager.appendNode('configuration', ['default': 'false', 'name': entry.name,
+                                                                 'type'   : "Application", factoryName: "Application"])
+        runnerNode.appendNode('extension', ['name': "coverage", 'enabled': "false", merge: "false"])
+        runnerNode.appendNode('option', ['name': "MAIN_CLASS_NAME", value: entry.main])
+        runnerNode.appendNode('option', ['name': "VM_PARAMETERS", value: "-Xmx2048m -Dlocalhost.override=true -Dlocalhost.use.princpal.mock.repo=true -Duser.name=\"" + username.toUpperCase() + "\""])
+        runnerNode.appendNode('option', ['name': "PROGRAM_PARAMETERS", value: ""])
+        runnerNode.appendNode('option', ['name': "WORKING_DIRECTORY", value: workingDir])
+        runnerNode.appendNode('option', ['name': "ALTERNATIVE_JRE_PATH_ENABLED", value: "false"])
+        runnerNode.appendNode('option', ['name': "ALTERNATIVE_JRE_PATH", value: ""])
+        runnerNode.appendNode('option', ['name': "ENABLE_SWING_INSPECTOR", value: "false"])
+        runnerNode.appendNode('option', ['name': "ENV_VARIABLES", value: ""])
+        runnerNode.appendNode('option', ['name': "PASS_PARENT_ENVS", value: "true"])
+        runnerNode.appendNode('module', ['name': module])
+        def runLaunch = runnerNode.appendNode('method', ['v': "2"])
+        runLaunch.appendNode('option', ['name': "Make", enabled: "true"])
+        runLaunch.appendNode('option', ['name': "ToolBeforeRunTask", enabled: "true", actionId: "Tool_External Tools_gradle less"])
+      }
+      [[name: 'DevMode', main: gwtClass]].each { entry ->
+        def runner2Node = runManager.appendNode('configuration', ['default': 'false', 'name': entry.name,
+                                                                  'type'   : "Application", factoryName: "Application"])
+        runner2Node.appendNode('extension', ['name': "coverage", 'enabled': "false", merge: "false"])
+        runner2Node.appendNode('option', ['name': "MAIN_CLASS_NAME", value: entry.main])
+        runner2Node.appendNode('option', ['name': "VM_PARAMETERS", value: "-Xmx2048m -Dlocalhost.override=true -Dlocalhost.use.princpal.mock.repo=true -Duser.name=\"" + username.toUpperCase() + "\""])
+        runner2Node.appendNode('option', ['name': "PROGRAM_PARAMETERS", value: "-nosuperDevMode"])
+        runner2Node.appendNode('option', ['name': "WORKING_DIRECTORY", value: workingDir])
+        runner2Node.appendNode('option', ['name': "ALTERNATIVE_JRE_PATH_ENABLED", value: "false"])
+        runner2Node.appendNode('option', ['name': "ALTERNATIVE_JRE_PATH", value: ""])
+        runner2Node.appendNode('option', ['name': "ENABLE_SWING_INSPECTOR", value: "false"])
+        runner2Node.appendNode('option', ['name': "ENV_VARIABLES", value: ""])
+        runner2Node.appendNode('option', ['name': "PASS_PARENT_ENVS", value: "true"])
+        runner2Node.appendNode('module', ['name': module])
+        def run2Launch = runner2Node.appendNode('method', ['v': "2"])
+        run2Launch.appendNode('option', ['name': "Make", enabled: "true"])
+        run2Launch.appendNode('option', ['name': "ToolBeforeRunTask", enabled: "true", actionId: "Tool_External Tools_gradle less"])
+      }
+    }
+  }
+} else if (project == project.rootProject) {
+  println("root project " + project.name + " does not have property ideaWorkspace")
+}

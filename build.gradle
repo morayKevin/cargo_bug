@@ -1,0 +1,26 @@
+apply plugin: 'idea'
+apply plugin: 'java'
+
+buildscript{
+    repositories{
+        maven {
+            url = "https://repo1.maven.org/maven2/"
+        }
+    }
+    dependencies{
+        classpath("com.bmuschko:gradle-cargo-plugin:2.8.0")
+    }
+}
+
+apply from: '.\\externalGradle\\deployment.gradle'
+apply from: '.\\externalGradle\\fedriscommon.gradle'
+apply from: '.\\externalGradle\\version.gradle'
+
+
+
+subprojects{
+
+    dependencies{
+
+    }
+}

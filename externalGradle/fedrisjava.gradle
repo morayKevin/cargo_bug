@@ -1,0 +1,19 @@
+apply from: '..\\externalGradle\\fedriscommon.gradle'
+dependencies {
+  compile "commons-io:commons-io:$commonsIOVersion"
+  if(!project.hasProperty("springBootProject")) {
+    compile "org.slf4j:slf4j-api:$slf4jVersion"
+    compile "org.slf4j:slf4j-jdk14:$slf4jVersion"
+    compile "org.slf4j:jcl-over-slf4j:$slf4jVersion"
+    compile "org.slf4j:log4j-over-slf4j:$slf4jVersion"
+  }
+  compile group: 'mysql', name: 'mysql-connector-java', version: "$mysqlVersion"
+  runtime "com.ibm:db2jcc4:$db2jcc4Version"
+  runtime "com.ibm:db2jcc_license_cisuz:$db2jcc4LicenceVersion"
+  runtime "org.postgresql:postgresql:$postgreSqlVersion"
+  if (project.hasProperty("domain") && domain != null && domain.equals("mp")) {
+    runtime group: 'javax.mail', name: 'mail', version: "$mailVersion"
+  } else if (project.hasProperty("domain") && domain != null && domain.equals("fedris")) {
+    runtime group: 'javax.mail', name: 'javax.mail-api', version: "$mailVersion"
+  }
+}

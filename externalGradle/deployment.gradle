@@ -1,0 +1,563 @@
+buildscript {
+  repositories {
+    maven {
+      url = "https://repo1.maven.org/maven2/"
+    }
+  }
+  dependencies {
+    classpath("com.bmuschko:gradle-cargo-plugin:2.8.0")
+  }
+}
+apply plugin: 'com.bmuschko.cargo-base'
+apply from: '.\\externalGradle\\server.gradle'
+ext.cargoVersion = '1.9.9'
+def glassfishApplicationName = ext.name
+
+import com.bmuschko.gradle.cargo.convention.Deployable
+import com.bmuschko.gradle.cargo.convention.ContainerProperties
+import com.bmuschko.gradle.cargo.tasks.remote.CargoDeployRemote
+import com.bmuschko.gradle.cargo.tasks.remote.CargoRedeployRemote
+import com.bmuschko.gradle.cargo.tasks.remote.CargoUndeployRemote
+
+dependencies {
+  cargo "org.codehaus.cargo:cargo-core-uberjar:$cargoVersion",
+      "org.codehaus.cargo:cargo-licensed-dtds:$cargoVersion",
+      "org.codehaus.cargo:cargo-ant:$cargoVersion",
+      'org.glassfish.main.deployment:deployment-client:5.1.0'
+}
+
+/**
+ * For direct deployment
+ */
+task validateBranch {
+  doLast {
+    if (!project.hasProperty("branch") || branch == null || branch.length() < 2)
+      throw new GradleException("Branch var must be define when launching gradle tasks.")
+    if (!project.hasProperty("domain") || domain == null || domain.length() < 2)
+      throw new GradleException("Domain var must be define when launching gradle tasks.")
+    if (!(branch.startsWith("environment/labo") || branch.startsWith("environment/test") || branch.startsWith("environment/debug") || branch.startsWith("environment/acc") || branch.startsWith("environment/prod") || branch.startsWith("environment/val")))
+      throw new GradleException("To deploy branch must be in environment/labo,environment/test,environment/debug,environment/acc, environment/val,environment/prod.")
+    if (project.hasProperty("serverPort") && serverPort != null)
+      if (!serverPort.isInteger()) {
+        throw new GradleException("Port must be an integer.")
+      }
+    if (!project.hasProperty("userLogin") || userLogin == null || userLogin.length() < 2)
+      throw new GradleException("userLogin var must be define when launching gradle tasks.")
+    if (!project.hasProperty("userPassword") || userPassword == null || userPassword.length() < 2)
+      throw new GradleException("userPassword var must be define when launching gradle tasks.")
+    if (project.hasProperty("container") && container != null)
+      if (!(container.equals('glassfish5x') || container.equals('glassfish4x') || container.equals('glassfish3x'))) {
+        throw new GradleException("Container must be in 'glassfish5x', 'glassfish4x', or 'glassfish3x'.")
+      }
+  }
+}
+
+task undeployFromGlassfish(type: CargoUndeployRemote, dependsOn: validateBranch) {
+  println("Cargo classpath : " + classpath)
+
+  if (!project.hasProperty("glassfishContext"))
+    ext.glassfishContext = ""
+
+  protocol = 'https'
+  containerId = 'glassfish5x'
+  timeout = Duration.ofMinutes(2)
+  description = "Undeploys WAR from Glassfish ."  // description of task
+  if (project.hasProperty("branch") && branch != null) {
+    if (project.hasProperty("domain") && domain != null && domain.equals("fedris")) {
+      if (branch.startsWith("environment/labo")) {
+        hostname = "$fedris_labo"
+        containerId = 'payara'
+      } else if (branch.startsWith("environment/test"))
+        hostname = "$fedris_test"
+      else if (branch.startsWith("environment/debug"))
+        hostname = "$fedris_debug"
+      else if (branch.startsWith("environment/acc_ext"))
+        hostname = "$fedris_acc_ext"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$fedris_acc"
+      else if (branch.startsWith("environment/prod2"))
+        hostname = "$fedris_prod2"
+      else if (branch.startsWith("environment/prod"))
+        hostname = "$fedris_prod"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("old_fedris")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$old_fedris_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$old_fedris_acc"
+      else if (branch.startsWith("environment/prod"))
+        hostname = "$old_fedris_prod"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("daf")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$daf_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$daf_acc"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("mp")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("mp_old")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc")) {
+        hostname = "$mp_old_acc"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_old_prod"
+        containerId = 'glassfish3x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("carrousel")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_carrousel_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+  }
+  if (project.hasProperty("container") && container != null)
+    containerId = container
+  if (project.hasProperty("serverPort") && serverPort != null)
+    port = serverPort.toInteger() // port at which tomcat is running
+  else
+    port = 4848
+  if (project.hasProperty("userLogin") && userLogin != null)
+    username = userLogin // username of tomcat
+  if (project.hasProperty("userPassword") && userPassword != null)
+    password = userPassword  // password of the tomcat
+  println("UnDeploy " + applicationName + " on " + hostname + "~" + port + " context " + glassfishContext)
+  deployables = [new Deployable(files: files(findProject(':web') != null ? """${rootProject.projectDir}\\web/build/libs/${applicationName}.war""" : """${rootProject.projectDir}\\build/libs/${applicationName}.war"""), context: """${glassfishApplicationName}""")]
+}
+
+task deployOnGlassfish(type: CargoDeployRemote, dependsOn: validateBranch) {
+  if (!project.hasProperty("glassfishContext"))
+    ext.glassfishContext = ""
+  if (!project.hasProperty("warLocation"))
+    ext.warLocation = ""
+  else
+    println "warLocation : " + warLocation
+
+  description = "Deploys WAR to Glassfish ."  // description of task
+  containerId = 'glassfish5x'
+  timeout = Duration.ofMinutes(2)
+  if (project.hasProperty("branch") && branch != null) {
+    if (project.hasProperty("domain") && domain != null && domain.equals("fedris")) {
+      if (branch.startsWith("environment/labo")) {
+        hostname = "$fedris_labo"
+        containerId = 'payara'
+      } else if (branch.startsWith("environment/test"))
+        hostname = "$fedris_test"
+      else if (branch.startsWith("environment/debug"))
+        hostname = "$fedris_debug"
+      else if (branch.startsWith("environment/acc_ext"))
+        hostname = "$fedris_acc_ext"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$fedris_acc"
+      else if (branch.startsWith("environment/prod2"))
+        hostname = "$fedris_prod2"
+      else if (branch.startsWith("environment/prod"))
+        hostname = "$fedris_prod"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("old_fedris")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$old_fedris_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$old_fedris_acc"
+      else if (branch.startsWith("environment/prod"))
+        hostname = "$old_fedris_prod"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("daf")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$daf_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$daf_acc"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("mp")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("mp_old")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc")) {
+        hostname = "$mp_old_acc"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_old_prod"
+        containerId = 'glassfish3x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equals("carrousel")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_carrousel_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+  }
+  if (project.hasProperty("container") && container != null)
+    containerId = container
+  protocol = 'https'
+  if (project.hasProperty("serverPort") && serverPort != null)
+    port = serverPort.toInteger() // port at which tomcat is running
+  else
+    port = 4848
+  if (project.hasProperty("userLogin") && userLogin != null)
+    username = userLogin // username of tomcat
+  if (project.hasProperty("userPassword") && userPassword != null)
+    password = userPassword  // password of the tomcat
+
+//  containerProperties {
+//    property 'cargo.glassfish.deploy.arg.1', "deploymentorder 20"
+//  }
+
+  if (warLocation != "") {
+    println("Deploy File " + rootProject.projectDir + "\\" + warLocation + applicationName + ".war on " + hostname + "~" + port + " context " + glassfishContext)
+    deployables = [
+        new Deployable(files: files("""${rootProject.projectDir}\\${warLocation}${applicationName}.war"""), context: """${glassfishApplicationName}""")
+    ]
+  } else if (findProject(':web') != null) {
+    println("Deploy File " + rootProject.projectDir + "/web/build/libs/" + applicationName + ".war on " + hostname + "~" + port + " context " + glassfishContext)
+    deployables = [
+        new Deployable(files: files("""${rootProject.projectDir}\\web/build/libs/${applicationName}.war"""), context: """${glassfishApplicationName}""")
+    ]
+  } else {
+    println("Deploy File " + rootProject.projectDir + "/build/libs/" + applicationName + ".war on " + hostname + "~" + port + " context " + glassfishContext)
+    deployables = [
+        new Deployable(files: files("""${rootProject.projectDir}\\build/libs/${applicationName}.war"""), context: """${glassfishApplicationName}""")
+    ]
+  }
+}
+
+/**
+ * For delayed deployment
+ */
+task validateBranchWithPath {
+  doLast {
+    if (!project.hasProperty("filePath") || filePath == null || filePath.length() < 2)
+      throw new GradleException("File path var must be define when launching gradle tasks.")
+    if (!project.hasProperty("branch") || branch == null || branch.length() < 2)
+      throw new GradleException("Branch var must be define when launching gradle tasks.")
+    if (!project.hasProperty("domain") || domain == null || domain.length() < 2)
+      throw new GradleException("Domain var must be define when launching gradle tasks.")
+    if (!(branch.startsWith("environment/labo") || branch.startsWith("environment/test") || branch.startsWith("environment/acc") || branch.startsWith("environment/prod") || branch.startsWith("environment/val")))
+      throw new GradleException("To deploy branch must be in environment/labo,environment/test,environment/acc, environment/val,environment/prod.")
+    if (project.hasProperty("serverPort") && serverPort != null)
+      if (!serverPort.isInteger()) {
+        throw new GradleException("Port must be an integer.")
+      }
+    if (!project.hasProperty("userLogin") || userLogin == null || userLogin.length() < 2)
+      throw new GradleException("userLogin var must be define when launching gradle tasks.")
+    if (!project.hasProperty("userPassword") || userPassword == null || userPassword.length() < 2)
+      throw new GradleException("userPassword var must be define when launching gradle tasks.")
+    if (project.hasProperty("container") && container != null)
+      if (!(container.equals('glassfish5x') || container.equals('glassfish4x') || container.equals('glassfish3x'))) {
+        throw new GradleException("Container must be in 'glassfish5x', 'glassfish4x', or 'glassfish3x'.")
+      }
+  }
+}
+
+task undeployFromGlassfishWithPath(type: CargoUndeployRemote, dependsOn: validateBranchWithPath) {
+  if (!project.hasProperty("filePath"))
+    ext.filePath = ""
+
+  if (!project.hasProperty("glassfishContext"))
+    ext.glassfishContext = ""
+
+  protocol = 'https'
+  timeout = Duration.ofMinutes(2)
+  containerId = 'glassfish5x'
+  description = "Undeploys WAR from Tomcat ."  // description of task
+
+  if (project.hasProperty("branch") && branch != null) {
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("fedris")) {
+      if (branch.startsWith("environment/labo"))
+        hostname = "$fedris_labo" // ip of the tomcat
+      else if (branch.startsWith("environment/test"))
+        hostname = "$fedris_test"
+      else if (branch.startsWith("environment/acc_ext"))
+        hostname = "$fedris_acc_ext"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$fedris_acc"
+      else if (branch.startsWith("environment/prod2"))
+        hostname = "$fedris_prod2"
+      else if (branch.startsWith("environment/prod"))
+        hostname = "$fedris_prod"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("daf")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$daf_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$daf_acc"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("mp")) {
+      if (branch.startsWith("environment/test")) {
+        println("set hostname to " + "$mp_test")
+        hostname = "$mp_test"
+      } else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("mp_old")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc")) {
+        hostname = "$mp_old_acc"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_old_prod"
+        containerId = 'glassfish3x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("carrousel")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_carrousel_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+  }
+  if (project.hasProperty("container") && container != null)
+    containerId = container
+  if (project.hasProperty("serverPort") && serverPort != null)
+    port = serverPort.toInteger() // port at which tomcat is running
+  else
+    port = 4848
+  if (project.hasProperty("userLogin") && userLogin != null)
+    username = userLogin // username of tomcat
+  if (project.hasProperty("userPassword") && userPassword != null)
+    password = userPassword  // password of the tomcat
+  println("UnDeploy " + applicationName + " on " + hostname + "~" + port + " context " + glassfishContext)
+  deployables = [new Deployable(files: files("""${filePath}\\${applicationName}.war"""), context: """${glassfishContext}""")]
+}
+
+task deployOnGlassfishWithPath(type: CargoDeployRemote, dependsOn: validateBranchWithPath) {
+  if (!project.hasProperty("filePath"))
+    ext.filePath = ""
+
+  if (!project.hasProperty("glassfishContext"))
+    ext.glassfishContext = ""
+
+  description = "Deploys WAR to Tomcat ."  // description of task
+  timeout = Duration.ofMinutes(2)
+  containerId = 'glassfish5x'
+  if (project.hasProperty("branch") && branch != null) {
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("fedris")) {
+      if (branch.startsWith("environment/labo"))
+        hostname = "$fedris_labo" // ip of the tomcat
+      else if (branch.startsWith("environment/test"))
+        hostname = "$fedris_test"
+      else if (branch.startsWith("environment/acc_ext"))
+        hostname = "$fedris_acc_ext"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$fedris_acc"
+      else if (branch.startsWith("environment/prod2"))
+        hostname = "$fedris_prod2"
+      else if (branch.startsWith("environment/prod"))
+        hostname = "$fedris_prod"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("daf")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$daf_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$daf_acc"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("mp")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("mp_old")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc")) {
+        hostname = "$mp_old_acc"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_old_prod"
+        containerId = 'glassfish3x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("carrousel")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_carrousel_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+  }
+  if (project.hasProperty("container") && container != null)
+    containerId = container
+  protocol = 'https'
+  if (project.hasProperty("serverPort") && serverPort != null)
+    port = serverPort.toInteger() // port at which tomcat is running
+  else
+    port = 4848
+  if (project.hasProperty("userLogin") && userLogin != null)
+    username = userLogin // username of tomcat
+  if (project.hasProperty("userPassword") && userPassword != null)
+    password = userPassword  // password of the tomcat
+  println("Deploy " + applicationName + " on " + hostname + "~" + port + " context " + glassfishContext)
+  deployables = [
+      new Deployable(files: files("""${filePath}\\${applicationName}.war"""), context: """${glassfishContext}""")
+  ]
+}
+
+task redeployOnGlassfishWithPath(type: CargoRedeployRemote, dependsOn: validateBranchWithPath) {
+  if (!project.hasProperty("filePath"))
+    ext.filePath = ""
+
+  if (!project.hasProperty("glassfishContext"))
+    ext.glassfishContext = ""
+
+  description = "Deploys WAR to Tomcat ."  // description of task
+  timeout = Duration.ofMinutes(2)
+  containerId = 'glassfish5x'
+  if (project.hasProperty("branch") && branch != null) {
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("fedris")) {
+      if (branch.startsWith("environment/labo"))
+        hostname = "$fedris_labo" // ip of the tomcat
+      else if (branch.startsWith("environment/test"))
+        hostname = "$fedris_test"
+      else if (branch.startsWith("environment/acc_ext"))
+        hostname = "$fedris_acc_ext"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$fedris_acc"
+      else if (branch.startsWith("environment/prod2"))
+        hostname = "$fedris_prod2"
+      else if (branch.startsWith("environment/prod"))
+        hostname = "$fedris_prod"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("daf")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$daf_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$daf_acc"
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("mp")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("mp_old")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc")) {
+        hostname = "$mp_old_acc"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_old_prod"
+        containerId = 'glassfish3x'
+      }
+    }
+    if (project.hasProperty("domain") && domain != null && domain.equalsIgnoreCase("carrousel")) {
+      if (branch.startsWith("environment/test"))
+        hostname = "$mp_test"
+      else if (branch.startsWith("environment/acc"))
+        hostname = "$mp_acc"
+      else if (branch.startsWith("environment/val")) {
+        hostname = "$mp_val"
+        containerId = 'glassfish3x'
+      } else if (branch.startsWith("environment/prod")) {
+        hostname = "$mp_carrousel_prod"
+        containerId = 'glassfish4x'
+      }
+    }
+  }
+  if (project.hasProperty("container") && container != null)
+    containerId = container
+  protocol = 'https'
+  if (project.hasProperty("serverPort") && serverPort != null)
+    port = serverPort.toInteger() // port at which tomcat is running
+  else
+    port = 4848
+  if (project.hasProperty("userLogin") && userLogin != null)
+    username = userLogin // username of tomcat
+  if (project.hasProperty("userPassword") && userPassword != null)
+    password = userPassword  // password of the tomcat
+  println("Deploy " + applicationName + " on " + hostname + "~" + port + " context " + glassfishContext)
+  deployables = [
+      new Deployable(files: files("""${filePath}\\${applicationName}.war"""), context: """${glassfishContext}""")
+  ]
+}
