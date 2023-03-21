@@ -6,11 +6,17 @@ buildscript{
         maven {
             url = "https://repo1.maven.org/maven2/"
         }
+        maven {
+            url = "https://plugins.gradle.org/m2/"
+        }
     }
     dependencies{
         classpath("com.bmuschko:gradle-cargo-plugin:2.8.0")
+        classpath ("org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:3.4.0.2513")
     }
 }
+
+apply plugin: 'org.sonarqube'
 
 apply from: '.\\externalGradle\\deployment.gradle'
 apply from: '.\\externalGradle\\fedriscommon.gradle'
@@ -22,5 +28,11 @@ subprojects{
 
     dependencies{
 
+    }
+}
+
+sonarqube {
+    properties {
+        property "sonar.projectKey", "TM_taskmanager_AYP1qGagz61uP62kXyys"
     }
 }
