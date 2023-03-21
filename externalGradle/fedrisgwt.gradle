@@ -13,7 +13,6 @@ ext.webAppDirName = 'war'
 jar.enabled = true
 
 task gwtCompile(type: GwtCompile, dependsOn: compileJava) {
-  logging.setLevel(LogLevel.INFO)
   sources = sourceSets.main.java
   ext.target = new File('war')
   ext.workers = project.hasProperty('localWorkers') ? project.getProperty('localWorkers') : 2
@@ -35,7 +34,7 @@ war {
   def appName = (!project.hasProperty('applicationName') || applicationName == null || applicationName.isEmpty()) ? project.rootProject.name : applicationName
   def modName = (!project.hasProperty('moduleName') || moduleName == null || moduleName.isEmpty()) ? appName : moduleName
   println("initialize war Task with Name :[" + appName + "]")
-  archiveName(appName + '.war')
+  //archiveName(appName + '.war')
   webXml = file('war/WEB-INF/web.xml')
   from('war/WEB-INF') {
     include 'applicationContext.xml'
@@ -233,11 +232,11 @@ war {
 
 dependencies {
   if (project.hasProperty("domain") && domain != null && domain.equals("fedris")) {
-    compile group: 'be.fedris.fedrisCore', name: 'security', version: "$fedrisCoreVersion"
+    implementation group: 'be.fedris.fedrisCore', name: 'security', version: "$fedrisCoreVersion"
   } else {
-    compile "be.fedris.fedris-core:sfilter:$fedrisCoreVersion"
+    implementation "be.fedris.fedris-core:sfilter:$fedrisCoreVersion"
   }
-  compile "javax.servlet:javax.servlet-api:$servletVersion"
+  implementation "javax.servlet:javax.servlet-api:$servletVersion"
 }
 
 buildscript {

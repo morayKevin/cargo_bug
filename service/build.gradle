@@ -1,7 +1,7 @@
 apply from: '..\\externalGradle\\fedrisjava.gradle'
 
 dependencies {
-    compile project(':domain')
+    implementation project(':domain')
 }
 
 defaultTasks 'build'

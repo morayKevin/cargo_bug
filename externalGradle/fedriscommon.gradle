@@ -40,11 +40,6 @@ repositories {
     url = "https://repo.itextsupport.com/releases"
   }
 
-  // Ehealth dependencies (Smals)
-  maven {
-    url = "http://repo.ehealth.fgov.be/artifactory/maven2/"
-  }
-
   // e-contract.be dependencies (fedict)
   maven {
     url = "https://e-contract.be/maven2/"
@@ -54,25 +49,12 @@ repositories {
 
 task sourceJar(type: Jar, dependsOn: classes) {
   from project.sourceSets.main.allSource
-  if (project.hasProperty('publication_classifier')) {
-    classifier = publication_classifier + '-sources'
-  } else {
-    classifier = 'sources'
-  }
 }
 task packageJavadoc(type: Jar, dependsOn: javadoc) {
   from project.javadoc.destinationDir
-  if (project.hasProperty('publication_classifier')) {
-    classifier = publication_classifier + '-javadoc'
-  } else {
-    classifier = 'javadoc'
-  }
 }
 
 jar {
-  if (project.hasProperty('publication_classifier')) {
-    classifier = publication_classifier
-  }
 }
 
 task publish(dependsOn: [], overwrite: true) {
